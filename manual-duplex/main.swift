@@ -127,6 +127,25 @@ func run() throws {
     alert("Wysłano drugie strony", backReceipt + "\nPoczekaj na zakończenie drukowania. Stan i ewentualne anulowanie znajdziesz w kolejce drukowania macOS.")
 }
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let menu = NSMenu()
+        let item = NSMenuItem()
+        let applicationMenu = NSMenu()
+        applicationMenu.addItem(withTitle: "Zakończ HP1020 Manual Duplex",
+                                action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        item.submenu = applicationMenu
+        menu.addItem(item)
+        NSApp.mainMenu = menu
+        // Present panels only after AppKit has completed launch and registered its UI.
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            do { try run() } catch { alert("Nie udało się wydrukować", error.localizedDescription) }
+            NSApp.terminate(nil)
+        }
+    }
+}
+
 if CommandLine.arguments.contains("--self-test") {
     for count in 1...101 {
         let p = plan(count)
@@ -155,7 +174,8 @@ if CommandLine.arguments.contains("--self-test") {
     print("PASS: pairing 1...101 pages, blank padding, PDF round trip, rotation and source preservation")
 } else {
     let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
     app.setActivationPolicy(.regular)
-    app.activate(ignoringOtherApps: true)
-    do { try run() } catch { alert("Nie udało się wydrukować", error.localizedDescription) }
+    withExtendedLifetime(delegate) { app.run() }
 }
