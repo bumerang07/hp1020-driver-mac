@@ -34,7 +34,7 @@ This repo skips all of that and gives you just the files you need to get it on 1
 ### 1. Clone this repo
 
 ```bash
-git clone https://github.com/anxkhn/hp1020-driver-mac
+git clone https://github.com/bumerang07/hp1020-driver-mac
 cd hp1020-driver-mac
 ```
 
@@ -83,6 +83,10 @@ lpadmin -p "HP_LaserJet_1020" -E \
 ```
 
 ---
+
+## Manual two-sided printing (macOS app)
+
+This fork adds a PDF printing app with a paper-reload confirmation dialog. Build and usage instructions (Polish): [manual-duplex/README.md](manual-duplex/README.md). The second pass is submitted only after the user confirms. The original HP driver binaries are unchanged.
 
 ## Print
 
