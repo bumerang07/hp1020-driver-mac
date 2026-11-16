@@ -84,6 +84,10 @@ lpadmin -p "HP_LaserJet_1020" -E \
 
 ---
 
+## Native manual two-sided printing (prototype)
+
+This fork now includes a CUPS raster filter, a PPD option in the system print dialog, and an automatic paper-reload confirmation agent. Both passes stay in the same CUPS job. See [native-duplex/README.md](native-duplex/README.md) for installation, tests, limitations and rollback. This is a compiled prototype; physical HP 1020 and macOS CUPS integration testing is still required.
+
 ## Manual two-sided printing (macOS app)
 
 This fork adds a PDF printing app with a paper-reload confirmation dialog. Build and usage instructions (Polish): [manual-duplex/README.md](manual-duplex/README.md). The second pass is submitted only after the user confirms. The original HP driver binaries are unchanged.
