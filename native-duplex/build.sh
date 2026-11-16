@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 mkdir -p build/module-cache
 ARCH=$(uname -m)
 xcrun clang -target "$ARCH-apple-macos13.0" -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations filter.c -lcups -o build/hp1020duplex
+xcrun clang -target "$ARCH-apple-macos13.0" -std=c11 -Wall -Wextra -Werror queue-state.c -lcups -o build/queue-state
 APP="build/HP1020 Duplex Agent.app"
 mkdir -p "$APP/Contents/MacOS"
 xcrun swiftc -module-cache-path build/module-cache -target "$ARCH-apple-macosx13.0" -Onone Agent.swift -framework AppKit -o "$APP/Contents/MacOS/HP1020DuplexAgent"

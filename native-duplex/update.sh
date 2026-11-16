@@ -10,8 +10,7 @@ BASE=/Library/Printers/HP1020Duplex
 QUEUE=$(cat "$BASE/queue")
 case "$QUEUE" in ''|*[!A-Za-z0-9_.-]*) exit 1;; esac
 # Failed/held jobs are preserved. Never update while a job is processing.
-STATUS=$(LC_ALL=C /usr/bin/lpstat -p "$QUEUE")
-case "$STATUS" in *' is idle.'*|*' disabled '*) ;; *) echo 'Wait until the printer is idle or pause it in Print Center.' >&2; exit 1;; esac
+./build/queue-state "$QUEUE" || { echo 'Wait until the printer is idle or pause it in Print Center.' >&2; exit 1; }
 [ -x build/hp1020duplex ] && [ -x 'build/HP1020 Duplex Agent.app/Contents/MacOS/HP1020DuplexAgent' ]
 install -o root -g wheel -m 555 build/hp1020duplex "$BASE/hp1020duplex.new"
 /bin/launchctl bootout "gui/$OWNER_UID/community.hp1020.duplex.agent" 2>/dev/null || true
