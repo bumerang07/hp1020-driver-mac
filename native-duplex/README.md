@@ -62,6 +62,18 @@ Test filtra uruchamia prawdziwy kod C i bibliotekę rastra CUPS. Konwerter HP za
 
 Walidator PPD ostrzega o niezainstalowanym jeszcze filtrze, brakującej ikonie z oryginalnego pakietu HP i dwóch odziedziczonych nazwach. `-W filters` pozwala sprawdzić PPD przed instalacją. Te ostrzeżenia nie są testem integracji CUPS.
 
+## Aktualizacja po błędzie dostępu do monitu
+
+Wersja początkowa miała błędne uprawnienia komunikacji między kontem `_lp` a użytkownikiem. Poprawka otwiera katalog w trybie wyszukiwania (`O_SEARCH`) i udostępnia `_lp` odczyt metadanych heartbeat/odpowiedzi (0644). Nie udostępnia dokumentów ani listowania katalogu.
+
+Po zbudowaniu poprawionej wersji:
+
+```sh
+sudo sh native-duplex/update.sh
+```
+
+Skrypt wymienia zainstalowany filtr i komponent monitu, uruchamia go ponownie i sprawdza dostęp z konta `_lp`. Nie usuwa, nie wznawia ani nie wysyła ponownie zadań drukowania. Dopuszcza zachowane zadania wstrzymane po błędzie, ale wymaga bezczynnej lub wyłączonej kolejki.
+
 ## Przywrócenie poprzedniego sterownika
 
 Poczekaj na zakończenie lub anuluj aktywne zadania. Uruchom **Uninstall.command** albo:

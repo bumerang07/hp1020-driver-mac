@@ -18,3 +18,7 @@ Not passed / not verified:
 - No physical HP 1020 print, actual scheduler/backend sandbox test, system print-dialog option test, Intel build/run, or notarization was performed.
 
 Next integration check: install into an idle, already working HP 1020 queue, reopen the print dialog, verify long-edge duplex is default, print four numbered pages, confirm the paper prompt, inspect page pairs and orientation, then test five pages and cancellation. Keep the original PPD backup until this is confirmed.
+
+## IPC permission correction after first hardware attempt
+
+CUPS connected to USB but the wrapper exited before raster processing with `Confirmation agent is not installed for this user`. The agent itself was running. Corrected directory open mode to O_SEARCH and metadata file modes from 0600 to 0644. Added a regression assertion for heartbeat/reply file modes and a `--check-agent USER` diagnostic. The privileged update script tests this from `_lp`, preserves held jobs and does not resume printing. Local raster and agent tests pass; deployment of this correction still requires administrator authentication.

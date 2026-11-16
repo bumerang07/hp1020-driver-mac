@@ -50,9 +50,10 @@ static int number(const char *s, int max) {
 static void connect_agent(const char *user) {
     struct passwd *pw=getpwnam(user); if (!pw || pw->pw_uid == 0) fail("A local logged-in user is required");
     char path[256]; snprintf(path,sizeof(path),"%s%u",IPC_BASE,pw->pw_uid);
-    ipc=open(path,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    ipc=open(path,O_SEARCH|O_NOFOLLOW|O_CLOEXEC);
     struct stat st;
-    if(ipc<0 || fstat(ipc,&st) || st.st_uid!=pw->pw_uid || (st.st_mode&07777)!=01733) fail("Confirmation agent is not installed for this user");
+    if(ipc<0) { fprintf(stderr,"ERROR: HP1020 Duplex: Cannot open confirmation directory: %s\n",strerror(errno)); exit(1); }
+    if(fstat(ipc,&st) || st.st_uid!=pw->pw_uid || (st.st_mode&07777)!=01733) fail("Invalid confirmation directory owner or mode");
     int fd=openat(ipc,"heartbeat",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
     if(fd<0 || fstat(fd,&st) || !S_ISREG(st.st_mode) || st.st_uid!=pw->pw_uid || time(NULL)-st.st_mtime>15 || st.st_mtime>time(NULL)+5) fail("Confirmation agent is not running; no pages were printed");
     close(fd);
@@ -140,6 +141,10 @@ static void vendor(FILE *raster, char **argv) {
     if(!WIFEXITED(status)||WEXITSTATUS(status)!=0) fail("HP converter failed; cancel the job and check the printer before retrying");
 }
 int main(int argc, char **argv) {
+    if(argc==3 && !strcmp(argv[1],"--check-agent")) {
+        atexit(cleanup); connect_agent(argv[2]);
+        puts("PASS: confirmation agent directory and heartbeat are accessible"); return 0;
+    }
     if(argc!=6 && argc!=7) { fprintf(stderr,"Usage: filter job user title copies options [raster]\n"); return 1; }
     signal(SIGPIPE,SIG_IGN);
     struct sigaction sa={0}; sa.sa_handler=stop; sigaction(SIGTERM,&sa,NULL); sigaction(SIGINT,&sa,NULL);

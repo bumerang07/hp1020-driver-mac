@@ -43,8 +43,9 @@ func readRequest(_ name: String) -> Request? {
 }
 func atomicWrite(_ name: String, _ value: String) -> Bool {
     let pending = ".agent-\(UUID().uuidString)"
-    let fd = openat(directoryFD, pending, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+    let fd = openat(directoryFD, pending, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
     guard fd >= 0 else { return false }
+    guard fchmod(fd, 0o644) == 0 else { close(fd); unlinkat(directoryFD, pending, 0); return false }
     let data = Array(value.utf8)
     let count = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
     close(fd)
@@ -81,7 +82,19 @@ if CommandLine.arguments.contains("--self-test") {
     assert(validName(String(repeating: "a", count: 32) + ".request"))
     assert(!validName("../request"))
     assert(!validName(String(repeating: "g", count: 32) + ".request"))
-    print("PASS: agent protocol validation")
+    let testDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: testDirectory, withIntermediateDirectories: false)
+    directoryFD = open(testDirectory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+    assert(directoryFD >= 0)
+    for name in ["heartbeat", "test.reply"] {
+        assert(atomicWrite(name, "test"))
+        var info = stat()
+        assert(fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0)
+        assert(info.st_mode & 0o777 == 0o644, "CUPS must be able to read agent metadata")
+    }
+    close(directoryFD)
+    try FileManager.default.removeItem(at: testDirectory)
+    print("PASS: agent protocol validation and cross-user metadata permissions")
 } else if CommandLine.arguments.contains("--preview") {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
