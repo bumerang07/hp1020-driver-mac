@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
             result+=int(bits,2).to_bytes(2,'big')
         return result
     code,text,_=run(4,mode=None,replies=['continue'])
-    assert code==0 and pages(text)==[raw(1).hex(),raw(3).hex(),raw(4).hex(),raw(2).hex()]
+    assert code==0 and pages(text)==[raw(1).hex(),raw(3).hex(),rotated(raw(4),1).hex(),rotated(raw(2),1).hex()]
     started=time.monotonic()
     code,text,err=run(4,hang=True,hang_cancel=True)
     assert code==0 and 'job cancelled' in err and time.monotonic()-started<6
@@ -83,11 +83,13 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
         code,text,_=run(count,replies=['continue'])
         expected=[raw(n).hex() for n in range(1,count+1,2)]
         expected+=['00000000'] if count%2 else []
-        expected += [raw(n).hex() for n in range(count if count%2==0 else count-1,1,-2)]
+        expected += [rotated(raw(n),1).hex() for n in range(count if count%2==0 else count-1,1,-2)]
         assert code==0 and pages(text)==expected, (text, expected)
     for depth in (1,8):
-        code,text,_=run(4,depth=depth,mode='ShortEdge',replies=['continue'])
-        assert code==0 and pages(text)==[raw(1,depth).hex(),raw(3,depth).hex(),rotated(raw(4,depth),depth).hex(),rotated(raw(2,depth),depth).hex()]
+        for mode in ('LongEdge','ShortEdge'):
+            code,text,_=run(4,depth=depth,mode=mode,replies=['continue'])
+            back = (lambda n: rotated(raw(n,depth),depth)) if mode=='LongEdge' else (lambda n: raw(n,depth))
+            assert code==0 and pages(text)==[raw(1,depth).hex(),raw(3,depth).hex(),back(4).hex(),back(2).hex()]
     code,text,_=run(1)
     assert code==0 and pages(text)==[raw(1).hex()]
     code,text,_=run(4,replies=['cancel'])
@@ -107,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
     code,text,_=run(4,replies=['continue'],spoof=True)
     assert code!=0 and len(pages(text))==2
     code,text,_=run(5,depth=8,replies=['continue'])
-    assert code==0 and pages(text)==[raw(1,8).hex(),raw(3,8).hex(),raw(5,8).hex(),'ffffffffffffffff',raw(4,8).hex(),raw(2,8).hex()]
+    assert code==0 and pages(text)==[raw(1,8).hex(),raw(3,8).hex(),raw(5,8).hex(),'ffffffffffffffff',rotated(raw(4,8),8).hex(),rotated(raw(2,8),8).hex()]
     code,text,_=run(4,mode='Invalid')
     assert code!=0 and not text
     print('PASS: raster parity/padding; 1/8-bit 180-degree rotation with padding; one page; copies; cancel; SIGTERM; timeout; missing agent; truncated input; simplex passthrough; symlink rejection; white blank padding; invalid option')

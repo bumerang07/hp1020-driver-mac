@@ -41,3 +41,7 @@ Verified on this Mac without a USB backend or physical printing:
 A full physical duplex test after installing this correction is still required. The failed physical job 631 was cancelled; no replacement job was submitted by these tests.
 
 Cancellation follow-up: an orphaned HP converter from job 631 remained after the scheduler cancelled its parent. Added direct-PID signalling in addition to process-group signalling, and updater recovery limited to orphaned HP converter processes belonging to the installing user's jobs. No other queue or active job is stopped by the updater.
+
+## Physical refeed orientation correction
+
+The user confirmed successful two-pass printing, but the back side was upside down with the normal stack transfer. Corrected the HP1020 bottom-edge-first mapping: LongEdge (default) rotates backs 180 degrees; ShortEdge leaves backs unrotated. Tests now assert both binding modes for 1-bit and 8-bit raster, plus the implicit default. Page pairing and ordering are unchanged. Physical confirmation of the corrected orientation is pending.

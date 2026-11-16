@@ -221,7 +221,8 @@ int main(int argc, char **argv) {
     if(!mode) mode="LongEdge"; // Also apply the default to command-line jobs without an explicit option.
     if(!strcmp(mode,"Off")) { argv[0]=(char *)HP_FILTER; execv(HP_FILTER,argv); fail("Cannot execute original HP converter"); }
     if(strcmp(mode,"LongEdge") && strcmp(mode,"ShortEdge")) fail("Unknown manual duplex option");
-    int rotate=!strcmp(mode,"ShortEdge"), copies=number(argv[4],100), job=number(argv[1],2147483647);
+    // HP1020 bottom-edge-first refeed needs a half-turn for book/long-edge binding.
+    int rotate=!strcmp(mode,"LongEdge"), copies=number(argv[4],100), job=number(argv[1],2147483647);
     if(copies<0||job<0) fail("Invalid job ID or copy count (maximum 100)");
     connect_agent(argv[2]);
     FILE *spool=temporary();
