@@ -25,4 +25,19 @@ CUPS connected to USB but the wrapper exited before raster processing with `Conf
 
 ## Cancellation watchdog and prompt visibility
 
-Added an isolated process group for the HP converter, nonblocking wait, SIGTERM on cancellation, forced group termination after 2 seconds, and a 30-minute per-pass timeout. Raster tests include a deliberately hung converter that ignores SIGTERM, checking both cancellation and timeout. Prompt windows use modal-panel level, remain visible after deactivation, join Spaces and request user attention. These changes do not by themselves fix a converter that never reports completion after printing the first side. A synthetic offline invocation of the installed legacy HP converter also remained waiting at a dispatch semaphore; no USB backend was used in that diagnostic.
+Added an isolated process group for the HP converter, nonblocking wait, SIGTERM on cancellation, forced group termination after 2 seconds, and a 30-minute per-pass timeout. Raster tests include a deliberately hung converter that ignores SIGTERM, checking both cancellation and timeout. Prompt windows use modal-panel level, remain visible after deactivation, join Spaces and request user attention. These changes alone did not fix the converter stall; the subsequent investigation below identified the regular-file stdin incompatibility.
+
+## Resolved converter stall: restore pipe semantics
+
+The wrapper had supplied a seekable temporary file as converter stdin. Reproduced a hang with the real installed HP converter and a synthetic CUPS A4 raster when stdin was a regular file, even when stdout was a pipe. With pipe stdin and pipe stdout the same converter completed successfully. The wrapper now feeds the private spool through a nonblocking pipe while monitoring cancellation and its watchdog. This preserves the input semantics of the original CUPS filter chain.
+
+Verified on this Mac without a USB backend or physical printing:
+
+- Actual wrapper + installed HP converter, one synthetic page: exit 0, 265181 bytes, approximately 0.51 seconds.
+- Actual wrapper + installed HP converter, two synthetic pages with simulated reload confirmation: exit 0, 530378 bytes; exactly one request, both passes complete and request/reply cleaned up.
+- Raster fixture now rejects regular-file stdin in the converter invocation, preventing regression.
+- Existing raster ordering, blank padding, rotation, cancellation, hung-child watchdog, timeout and agent protocol tests pass.
+
+A full physical duplex test after installing this correction is still required. The failed physical job 631 was cancelled; no replacement job was submitted by these tests.
+
+Cancellation follow-up: an orphaned HP converter from job 631 remained after the scheduler cancelled its parent. Added direct-PID signalling in addition to process-group signalling, and updater recovery limited to orphaned HP converter processes belonging to the installing user's jobs. No other queue or active job is stopped by the updater.

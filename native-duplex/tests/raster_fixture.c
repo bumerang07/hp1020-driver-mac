@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
 int main(int argc,char **argv) {
     if(argc==4&&!strcmp(argv[1],"--generate")) {
         int count=atoi(argv[2]), depth=atoi(argv[3]);
@@ -23,6 +24,8 @@ int main(int argc,char **argv) {
         }
         cupsRasterClose(r); return 0;
     }
+    // Regression: a CUPS converter must receive pipe stdin, not a temporary file.
+    if(argc==6) { struct stat st; if(fstat(0,&st)||!S_ISFIFO(st.st_mode)) return 5; }
     // Stand-in for rasterToHPZJS: emit a readable record, never contact a printer.
     FILE *file=argc==7?fopen(argv[6],"rb"):stdin;
     cups_raster_t *r=cupsRasterOpen(fileno(file),CUPS_RASTER_READ);

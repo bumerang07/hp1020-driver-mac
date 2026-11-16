@@ -37,7 +37,7 @@ Anulowanie monitu pomija tyły **i pozostałe kopie**. Dane już wysłane do dru
 
 - Generator PPD zachowuje ustawienia oryginalnego sterownika i podmienia wyłącznie filtr rastra. Dodaje własną opcję dupleksu, obsługę kopii oraz poprawia dwa błędne znaczniki `CloseUI` przy opcjach `JCLOpenUI` w źródłowym PPD.
 - Przy **Off** filtr bezpośrednio uruchamia oryginalny `rasterToHPZJS`, bez zmiany danych.
-- Przy dupleksie filtr czyta raster po systemowym przygotowaniu dokumentu. Przechowuje go w prywatnych, od razu odłączonych od katalogu plikach tymczasowych. Wysyła nieparzyste strony przez oryginalny konwerter HP, czeka na potwierdzenie i wysyła parzyste w odwrotnej kolejności. Przy 5 stronach to `[1,3,5]`, potem `[pusta,4,2]`.
+- Przy dupleksie filtr czyta raster po systemowym przygotowaniu dokumentu. Przechowuje go w prywatnych, od razu odłączonych od katalogu plikach tymczasowych. Do oryginalnego konwertera HP przekazuje dane przez nieblokujący potok, tak jak standardowy łańcuch CUPS — zwykły plik na standardowym wejściu konwertera powodował zawieszenie po pierwszej stronie. Wysyła nieparzyste strony przez oryginalny konwerter HP, czeka na potwierdzenie i wysyła parzyste w odwrotnej kolejności. Przy 5 stronach to `[1,3,5]`, potem `[pusta,4,2]`.
 - Oba przebiegi pozostają **jednym zadaniem CUPS z tym samym backendem USB**. Zadania tej samej kolejki nie mogą wejść pomiędzy nie. Nie używaj równolegle drugiej kolejki prowadzącej do tego samego USB ani innego komputera sterującego drukarką.
 - Dla wielu kopii każda kopia ma własny monit. Zakończony stos wyjmij przed wydrukiem następnej kopii.
 - Komponent AppKit działający w sesji użytkownika odczytuje wyłącznie metadane: identyfikator zadania, liczbę stron i kopii. Nie otrzymuje dokumentu ani jego tytułu. Filtr nie ma dostępu do pulpitu użytkownika, dlatego okno pokazuje osobny proces działający automatycznie.
@@ -58,11 +58,13 @@ python3 native-duplex/tests/test_filter.py
 cupstestppd -W filters native-duplex/build/HP1020-ManualDuplex.ppd
 ```
 
-Test filtra uruchamia prawdziwy kod C i bibliotekę rastra CUPS. Konwerter HP zastępuje programem testowym, a kliknięcie użytkownika odpowiedzią protokołu. Sprawdza parowanie, pusty tył, obrót 1/8 bit z niepełnym ostatnim bajtem i paddingiem, kopie, anulowanie, SIGTERM, timeout, brak agenta, ucięty raster oraz tryb jednostronny. Nie ma połączenia z drukarką.
+Test filtra uruchamia prawdziwy kod C i bibliotekę rastra CUPS. Konwerter HP zastępuje programem testowym, a kliknięcie użytkownika odpowiedzią protokołu. Sprawdza parowanie, pusty tył, obrót 1/8 bit z niepełnym ostatnim bajtem i paddingiem, kopie, anulowanie, SIGTERM, timeout, brak agenta, ucięty raster oraz tryb jednostronny. Nie ma połączenia z drukarką. Test sprawdza też, że konwerter dostaje na wejściu potok, a nie plik.
+
+Dodatkowy `tests/test_real_converter.py PATH_TO_SYNTHETIC_ONE_PAGE_RASTER` testuje dwa przebiegi z rzeczywistym, zainstalowanym konwerterem HP i symulacją potwierdzenia. Nie uruchamia backendu USB; cały strumień drukarki przechwytuje w pamięci. Wymaga działającego komponentu monitu oraz wejściowego, jednostronicowego rastra testowego CUPS. Nie podawaj rastra wielostronicowego.
 
 Walidator PPD ostrzega o niezainstalowanym jeszcze filtrze, brakującej ikonie z oryginalnego pakietu HP i dwóch odziedziczonych nazwach. `-W filters` pozwala sprawdzić PPD przed instalacją. Te ostrzeżenia nie są testem integracji CUPS.
 
-## Aktualizacja po błędzie dostępu do monitu
+## Aktualizacja po błędzie dostępu do monitu lub zawieszeniu konwertera
 
 Wersja początkowa miała błędne uprawnienia komunikacji między kontem `_lp` a użytkownikiem. Poprawka otwiera katalog w trybie wyszukiwania (`O_SEARCH`) i udostępnia `_lp` odczyt metadanych heartbeat/odpowiedzi (0644). Nie udostępnia dokumentów ani listowania katalogu.
 

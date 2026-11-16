@@ -11,6 +11,20 @@ QUEUE=$(cat "$BASE/queue")
 case "$QUEUE" in ''|*[!A-Za-z0-9_.-]*) exit 1;; esac
 # Failed/held jobs are preserved. Never update while a job is processing.
 ./build/queue-state "$QUEUE" || { echo 'Wait until the printer is idle or pause it in Print Center.' >&2; exit 1; }
+# Recover orphaned converters left by older builds, for this user only.
+HP=/Library/Printers/hp/laserjet/hplaserjetzjs.bundle/Contents/MacOS/rasterToHPZJS
+LP_UID=$(id -u _lp)
+owned_orphan() {
+    /bin/ps -p "$1" -o ppid=,uid=,args= | /usr/bin/awk -v uid="$LP_UID" -v hp="$HP" -v user="$OWNER" '
+        $1==1 && $2==uid && $3==hp && $5==user {found=1} END {exit !found}'
+}
+for PID in $(/bin/ps -axo pid=,ppid=,uid=,comm= | /usr/bin/awk -v uid="$LP_UID" -v hp="$HP" '$2==1 && $3==uid && $4==hp {print $1}'); do
+    if owned_orphan "$PID"; then
+        kill -TERM "$PID" 2>/dev/null || true
+        sleep 2
+        if owned_orphan "$PID"; then kill -KILL "$PID" 2>/dev/null || true; fi
+    fi
+done
 [ -x build/hp1020duplex ] && [ -x 'build/HP1020 Duplex Agent.app/Contents/MacOS/HP1020DuplexAgent' ]
 install -o root -g wheel -m 555 build/hp1020duplex "$BASE/hp1020duplex.new"
 /bin/launchctl bootout "gui/$OWNER_UID/community.hp1020.duplex.agent" 2>/dev/null || true

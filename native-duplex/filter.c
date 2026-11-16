@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <pwd.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -35,8 +36,12 @@
 static volatile sig_atomic_t stopped, child_pid;
 static int ipc = -1;
 static char request[80], reply[80];
-static void stop(int sig) { (void)sig; stopped = 1; if (child_pid > 0) kill(-child_pid, SIGTERM); }
+static void signal_converter(pid_t pid, int sig) {
+    if(pid>0) { kill(-pid,sig); kill(pid,sig); } // Direct PID also works when the CUPS sandbox rejects group signals.
+}
+static void stop(int sig) { (void)sig; stopped = 1; if (child_pid > 0) signal_converter(child_pid, SIGTERM); }
 static void cleanup(void) {
+    if(child_pid>0) { signal_converter(child_pid,SIGKILL); while(waitpid(child_pid,NULL,0)<0 && errno==EINTR) {} child_pid=0; }
     if (ipc >= 0) { if (*request) unlinkat(ipc, request, 0); if (*reply) unlinkat(ipc, reply, 0); close(ipc); }
 }
 static void fail(const char *message) { fprintf(stderr,"ERROR: HP1020 Duplex: %s\n",message); exit(stopped ? 0 : 1); }
@@ -134,39 +139,72 @@ static FILE *make_pass(FILE *spool, int count, int back, int rotate) {
 }
 static void vendor(FILE *raster, char **argv) {
     rewind(raster);
-    pid_t pid=fork(); if(pid<0) fail("Cannot start HP converter");
+    // HP's asynchronous reader requires a pipe, as provided by the CUPS filter chain.
+    // A regular file on fd 0 can deadlock after transmitting the first page.
+    int input_pipe[2];
+    if(pipe(input_pipe)) fail("Cannot create HP input pipe");
+    fcntl(input_pipe[0],F_SETFD,FD_CLOEXEC); fcntl(input_pipe[1],F_SETFD,FD_CLOEXEC);
+    pid_t pid=fork(); if(pid<0) { close(input_pipe[0]); close(input_pipe[1]); fail("Cannot start HP converter"); }
     if(pid==0) {
         if(setpgid(0,0)) _exit(1);
         signal(SIGTERM,SIG_DFL); signal(SIGINT,SIG_DFL);
-        if(dup2(fileno(raster),STDIN_FILENO)<0) _exit(1);
+        close(input_pipe[1]);
+        if(dup2(input_pipe[0],STDIN_FILENO)<0) _exit(1);
+        if(input_pipe[0]!=STDIN_FILENO) close(input_pipe[0]);
         char *args[]={HP_FILTER,argv[1],argv[2],argv[3],"1",argv[5],NULL};
         execv(HP_FILTER,args); _exit(127);
     }
     // Isolate the converter and any descendants so cancellation reaches all of them.
     if(setpgid(pid,pid) && errno!=EACCES && errno!=ESRCH) { kill(pid,SIGKILL); waitpid(pid,NULL,0); fail("Cannot isolate HP converter"); }
     child_pid=pid;
+    close(input_pipe[0]);
+    int writer=input_pipe[1];
+    if(fcntl(writer,F_SETFL,fcntl(writer,F_GETFL)|O_NONBLOCK)<0) fail("Cannot configure HP input pipe");
+    unsigned char buffer[65536]; size_t available=0, position=0;
+    int input_done=0;
     struct timespec started, now, terminating={0}; clock_gettime(CLOCK_MONOTONIC,&started);
     int status=0, timedout=0, sent_term=0, sent_kill=0;
     for(;;) {
         pid_t result=waitpid(pid,&status,WNOHANG);
         if(result==pid) break;
-        if(result<0 && errno!=EINTR) { kill(-pid,SIGKILL); fail("Cannot wait for HP converter"); }
+        if(result<0 && errno!=EINTR) { signal_converter(pid,SIGKILL); fail("Cannot wait for HP converter"); }
         clock_gettime(CLOCK_MONOTONIC,&now);
         if(!sent_term && (stopped || now.tv_sec-started.tv_sec>=VENDOR_TIMEOUT_SECONDS)) {
             timedout=!stopped; sent_term=1; terminating=now;
-            kill(-pid,SIGTERM);
+            if(writer>=0) { close(writer); writer=-1; }
+            signal_converter(pid,SIGTERM);
             fprintf(stderr,"INFO: Stopping HP converter (%s).\n",timedout?"timeout":"job cancelled");
         }
         if(sent_term && !sent_kill && now.tv_sec-terminating.tv_sec>=CANCEL_GRACE_SECONDS) {
-            sent_kill=1; kill(-pid,SIGKILL);
+            sent_kill=1; signal_converter(pid,SIGKILL);
         }
-        usleep(100000);
+        if(writer>=0 && !sent_term && !stopped) {
+            if(position==available) {
+                available=fread(buffer,1,sizeof(buffer),raster); position=0;
+                if(!available) {
+                    if(ferror(raster)) fail("Cannot read pass raster");
+                    close(writer); writer=-1; input_done=1;
+                }
+            }
+            if(writer>=0) {
+                struct pollfd pfd={writer,POLLOUT,0};
+                int ready=poll(&pfd,1,50);
+                if(ready<0 && errno!=EINTR) fail("Cannot poll HP input pipe");
+                if(ready>0 && (pfd.revents&(POLLOUT|POLLERR|POLLHUP))) {
+                    ssize_t written=write(writer,buffer+position,available-position);
+                    if(written>0) position+=(size_t)written;
+                    else if(written<0 && errno!=EINTR && errno!=EAGAIN) fail("HP converter closed its raster input");
+                }
+            }
+        } else usleep(100000);
     }
+    if(writer>=0) close(writer);
     // Do not leave descendants behind if the converter exits before its children.
-    kill(-pid,SIGKILL);
+    signal_converter(pid,SIGKILL);
     child_pid=0;
     if(stopped) return;
     if(timedout) fail("HP converter timed out; remaining pages were not printed");
+    if(!input_done && WIFEXITED(status) && WEXITSTATUS(status)==0) fail("HP converter exited before reading the complete raster");
     if(!WIFEXITED(status)||WEXITSTATUS(status)!=0) fail("HP converter failed; cancel the job and check the printer before retrying");
 }
 int main(int argc, char **argv) {
