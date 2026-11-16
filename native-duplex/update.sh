@@ -11,6 +11,9 @@ QUEUE=$(cat "$BASE/queue")
 case "$QUEUE" in ''|*[!A-Za-z0-9_.-]*) exit 1;; esac
 # Failed/held jobs are preserved. Never update while a job is processing.
 ./build/queue-state "$QUEUE" || { echo 'Wait until the printer is idle or pause it in Print Center.' >&2; exit 1; }
+# Pausing a queue with no processing job prevents new work during replacement.
+PREVIOUS_STATE=$(./build/queue-state --state "$QUEUE")
+/usr/sbin/cupsdisable "$QUEUE"
 # Recover orphaned converters left by older builds, for this user only.
 HP=/Library/Printers/hp/laserjet/hplaserjetzjs.bundle/Contents/MacOS/rasterToHPZJS
 LP_UID=$(id -u _lp)
@@ -40,4 +43,11 @@ until /usr/bin/sudo -u _lp "$BASE/hp1020duplex" --check-agent "$OWNER"; do
     [ "$ATTEMPT" -lt 10 ] || { echo 'Updated, but agent IPC check failed. Do not resume printing yet.' >&2; exit 1; }
     sleep 1
 done
+# Refresh stale job-0 state only when doing so cannot start a queued document.
+ACTIVE_COUNT=$(./build/queue-state --job-count "$QUEUE")
+if [ "$PREVIOUS_STATE" != 5 ] && [ "$ACTIVE_COUNT" = 0 ]; then
+    /usr/sbin/cupsenable "$QUEUE"
+else
+    echo 'Queue remains paused; resume it manually in Print Center when ready.'
+fi
 printf 'Updated %s. No print jobs were resumed or resubmitted.\n' "$QUEUE"
