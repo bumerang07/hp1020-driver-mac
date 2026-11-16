@@ -24,12 +24,18 @@
 #ifndef WAIT_SECONDS
 #define WAIT_SECONDS 1800
 #endif
+#ifndef VENDOR_TIMEOUT_SECONDS
+#define VENDOR_TIMEOUT_SECONDS 1800
+#endif
+#ifndef CANCEL_GRACE_SECONDS
+#define CANCEL_GRACE_SECONDS 2
+#endif
 #define MAX_PAGES 5000
 #define MAX_BYTES (4ULL*1024*1024*1024)
 static volatile sig_atomic_t stopped, child_pid;
 static int ipc = -1;
 static char request[80], reply[80];
-static void stop(int sig) { (void)sig; stopped = 1; if (child_pid > 0) kill(child_pid, SIGTERM); }
+static void stop(int sig) { (void)sig; stopped = 1; if (child_pid > 0) kill(-child_pid, SIGTERM); }
 static void cleanup(void) {
     if (ipc >= 0) { if (*request) unlinkat(ipc, request, 0); if (*reply) unlinkat(ipc, reply, 0); close(ipc); }
 }
@@ -130,14 +136,37 @@ static void vendor(FILE *raster, char **argv) {
     rewind(raster);
     pid_t pid=fork(); if(pid<0) fail("Cannot start HP converter");
     if(pid==0) {
+        if(setpgid(0,0)) _exit(1);
+        signal(SIGTERM,SIG_DFL); signal(SIGINT,SIG_DFL);
         if(dup2(fileno(raster),STDIN_FILENO)<0) _exit(1);
         char *args[]={HP_FILTER,argv[1],argv[2],argv[3],"1",argv[5],NULL};
         execv(HP_FILTER,args); _exit(127);
     }
-    child_pid=pid; if(stopped) kill(pid,SIGTERM);
-    int status=0; while(waitpid(pid,&status,0)<0) { if(errno!=EINTR) fail("Cannot wait for HP converter"); }
+    // Isolate the converter and any descendants so cancellation reaches all of them.
+    if(setpgid(pid,pid) && errno!=EACCES && errno!=ESRCH) { kill(pid,SIGKILL); waitpid(pid,NULL,0); fail("Cannot isolate HP converter"); }
+    child_pid=pid;
+    struct timespec started, now, terminating={0}; clock_gettime(CLOCK_MONOTONIC,&started);
+    int status=0, timedout=0, sent_term=0, sent_kill=0;
+    for(;;) {
+        pid_t result=waitpid(pid,&status,WNOHANG);
+        if(result==pid) break;
+        if(result<0 && errno!=EINTR) { kill(-pid,SIGKILL); fail("Cannot wait for HP converter"); }
+        clock_gettime(CLOCK_MONOTONIC,&now);
+        if(!sent_term && (stopped || now.tv_sec-started.tv_sec>=VENDOR_TIMEOUT_SECONDS)) {
+            timedout=!stopped; sent_term=1; terminating=now;
+            kill(-pid,SIGTERM);
+            fprintf(stderr,"INFO: Stopping HP converter (%s).\n",timedout?"timeout":"job cancelled");
+        }
+        if(sent_term && !sent_kill && now.tv_sec-terminating.tv_sec>=CANCEL_GRACE_SECONDS) {
+            sent_kill=1; kill(-pid,SIGKILL);
+        }
+        usleep(100000);
+    }
+    // Do not leave descendants behind if the converter exits before its children.
+    kill(-pid,SIGKILL);
     child_pid=0;
     if(stopped) return;
+    if(timedout) fail("HP converter timed out; remaining pages were not printed");
     if(!WIFEXITED(status)||WEXITSTATUS(status)!=0) fail("HP converter failed; cancel the job and check the printer before retrying");
 }
 int main(int argc, char **argv) {

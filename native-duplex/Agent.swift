@@ -68,7 +68,20 @@ func makeDialog(_ request: Request) -> NSAlert {
     dialog.informativeText = "Zadanie \(request.job), kopia \(request.copy) z \(request.copies), \((request.pages + 1) / 2) kartek.\n\nPoczekaj, aż WSZYSTKIE kartki wyjdą z drukarki. Sprawdź, czy wydruk jest kompletny.\n\nWyjmij czysty papier z podajnika. Włóż wydrukowany stos zadrukowaną stroną w dół, dolną krawędzią stron w stronę drukarki. Zachowaj kolejność: ostatnia nieparzysta strona ma być pobrana pierwsza.\n\nKliknij „Kontynuuj” dopiero po przełożeniu całego stosu. Jeśli brakuje kartek lub wystąpiło zacięcie, anuluj."
     dialog.addButton(withTitle: "Papier przełożony — Kontynuuj")
     dialog.addButton(withTitle: "Anuluj pozostałe strony")
+    // Keep the paper prompt visible across app changes and Spaces.
+    dialog.window.level = .modalPanel
+    dialog.window.hidesOnDeactivate = false
+    dialog.window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     return dialog
+}
+
+func present(_ dialog: NSAlert) -> NSApplication.ModalResponse {
+    NSApp.activate(ignoringOtherApps: true)
+    let attention = NSApp.requestUserAttention(.criticalRequest)
+    DispatchQueue.main.async { dialog.window.orderFrontRegardless() }
+    let result = dialog.runModal()
+    NSApp.cancelUserAttentionRequest(attention)
+    return result
 }
 
 final class Startup: NSObject, NSApplicationDelegate {
@@ -101,8 +114,7 @@ if CommandLine.arguments.contains("--self-test") {
     let delegate = Startup()
     delegate.onLaunch = {
         let dialog = makeDialog(Request(job: 123, pages: 5, copy: 1, copies: 1))
-        app.activate(ignoringOtherApps: true)
-        _ = dialog.runModal()
+        _ = present(dialog)
         app.terminate(nil)
     }
     app.delegate = delegate
@@ -131,8 +143,7 @@ if CommandLine.arguments.contains("--self-test") {
             activeName = name
             let dialog = makeDialog(request)
             currentAlert = dialog
-            app.activate(ignoringOtherApps: true)
-            let result = dialog.runModal()
+            let result = present(dialog)
             if readRequest(name) != nil {
                 let response = result == .alertFirstButtonReturn ? "continue\n" : "cancel\n"
                 _ = atomicWrite(String(name.dropLast(8)) + ".reply", response)

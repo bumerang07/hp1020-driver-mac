@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 int main(int argc,char **argv) {
     if(argc==4&&!strcmp(argv[1],"--generate")) {
         int count=atoi(argv[2]), depth=atoi(argv[3]);
@@ -36,5 +37,12 @@ int main(int argc,char **argv) {
         }
         puts(""); free(line);
     }
-    cupsRasterClose(r); fflush(stdout); return 0;
+    cupsRasterClose(r); fflush(stdout);
+    const char *marker=getenv("HP1020_TEST_HANG");
+    if(marker) {
+        signal(SIGTERM,SIG_IGN);
+        FILE *ready=fopen(marker,"w"); if(!ready) return 3; fputs("ready",ready); fclose(ready);
+        for(;;) pause();
+    }
+    return 0;
 }

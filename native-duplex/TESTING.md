@@ -22,3 +22,7 @@ Next integration check: install into an idle, already working HP 1020 queue, reo
 ## IPC permission correction after first hardware attempt
 
 CUPS connected to USB but the wrapper exited before raster processing with `Confirmation agent is not installed for this user`. The agent itself was running. Corrected directory open mode to O_SEARCH and metadata file modes from 0600 to 0644. Added a regression assertion for heartbeat/reply file modes and a `--check-agent USER` diagnostic. The privileged update script tests this from `_lp`, preserves held jobs and does not resume printing. Local raster and agent tests pass; deployment of this correction still requires administrator authentication.
+
+## Cancellation watchdog and prompt visibility
+
+Added an isolated process group for the HP converter, nonblocking wait, SIGTERM on cancellation, forced group termination after 2 seconds, and a 30-minute per-pass timeout. Raster tests include a deliberately hung converter that ignores SIGTERM, checking both cancellation and timeout. Prompt windows use modal-panel level, remain visible after deactivation, join Spaces and request user attention. These changes do not by themselves fix a converter that never reports completion after printing the first side. A synthetic offline invocation of the installed legacy HP converter also remained waiting at a dispatch semaphore; no USB backend was used in that diagnostic.

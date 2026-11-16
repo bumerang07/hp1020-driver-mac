@@ -27,11 +27,11 @@ Instalator dodaje filtr do `/Library/Printers/HP1020Duplex`, automatycznie uruch
 4. W **Manual Two-Sided Printing** wybierz **On - Long Edge** albo **On - Short Edge**. Domyślnie włączone jest **On - Long Edge** (długa krawędź). **Off** wybiera druk jednostronny. To własna opcja sterownika, nie systemowy przełącznik automatycznego dupleksu.
 5. Kliknij **Drukuj**. Po wysłaniu przodów pojawi się monit. Poczekaj na WSZYSTKIE kartki, przełóż stos według monitu i dopiero wtedy kliknij **Kontynuuj**.
 
-Monit nie jest potwierdzeniem fizycznego zakończenia drukowania: sterownik może opróżnić bufor transmisji, ale HP 1020 nadal może drukować. Użytkownik potwierdza kompletność i zakończenie pierwszego przebiegu.
+Monit nie jest potwierdzeniem fizycznego zakończenia drukowania: sterownik może opróżnić bufor transmisji, ale HP 1020 nadal może drukować. Użytkownik potwierdza kompletność i zakończenie pierwszego przebiegu. Monit jest aktywowany na pierwszym planie, korzysta z poziomu okna modalnego, nie ukrywa się przy przełączeniu aplikacji i może pojawiać się na wszystkich Spaces. Ograniczenia systemowych ekranów bezpieczeństwa nadal obowiązują.
 
 W pierwszej próbie użyj 4 stron z dużymi numerami i oznaczeniem góry. Sprawdź pary 1/2, 3/4 oraz kierunek oprawy. Następnie sprawdź 5 stron: ostatni tył ma być pusty. Krótka krawędź obraca raster tyłów o 180°. Instrukcja przełożenia opiera się na [podręczniku HP, s. 32–33](https://h10032.www1.hp.com/ctg/Manual/c00264334.pdf).
 
-Anulowanie monitu pomija tyły **i pozostałe kopie**. Dane już wysłane do drukarki mogą się wydrukować. Anulowanie całego zadania w systemowej kolejce przerywa filtr i usuwa żądanie monitu. Po zacięciu lub niekompletnym wydruku anuluj zadanie i rozpocznij od nowa.
+Anulowanie monitu pomija tyły **i pozostałe kopie**. Dane już wysłane do drukarki mogą się wydrukować. Anulowanie całego zadania w systemowej kolejce przerywa filtr i usuwa żądanie monitu. Konwerter HP i jego procesy potomne dostają SIGTERM; jeśli nie kończą się w ciągu 2 sekund, filtr używa SIGKILL. Pojedynczy przebieg konwersji ma również limit 30 minut. Anulowanego przebiegu nie wznawiamy automatycznie: po zacięciu lub anulowaniu należy rozpocząć od nowa z kompletnym stosem. Po zacięciu lub niekompletnym wydruku anuluj zadanie i rozpocznij od nowa.
 
 ## Jak działa
 

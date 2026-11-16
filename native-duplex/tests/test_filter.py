@@ -17,23 +17,31 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
     ipc.chmod(0o1733)
     build(['xcrun','clang','-Wno-deprecated-declarations',str(BASE/'tests/raster_fixture.c'),'-lcups','-o',str(fixture)])
     build(['xcrun','clang','-std=c11','-Wall','-Wextra','-Werror','-Wno-deprecated-declarations',
-           '-DHP_FILTER="'+str(fixture)+'"','-DIPC_BASE="'+ipc_prefix+'"','-DWAIT_SECONDS=3',
+           '-DHP_FILTER="'+str(fixture)+'"','-DIPC_BASE="'+ipc_prefix+'"','-DWAIT_SECONDS=3','-DVENDOR_TIMEOUT_SECONDS=2','-DCANCEL_GRACE_SECONDS=1',
            str(BASE/'filter.c'),'-lcups','-o',str(executable)])
-    def run(count, depth=1, mode='LongEdge', replies=None, copies=1, cancel=False, live=True, truncated=False, spoof=False):
+    def run(count, depth=1, mode='LongEdge', replies=None, copies=1, cancel=False, live=True, truncated=False, spoof=False, hang=False, hang_cancel=False):
         for p in ipc.iterdir(): p.unlink()
         if live: (ipc/'heartbeat').write_text('ready')
         raster = subprocess.check_output([str(fixture),'--generate',str(count),str(depth)])
         source = root/'input.ras'
         source.write_bytes(raster[:-1] if truncated else raster)
         out = root/'output.txt'
+        marker=root/'hang-ready'
+        marker.unlink(missing_ok=True)
+        environment=dict(os.environ)
+        if hang: environment['HP1020_TEST_HANG']=str(marker)
         with out.open('wb') as output, (root/'stderr').open('wb') as err:
             process=subprocess.Popen([str(executable),'123',USER,'Test',str(copies),
-                                      ('HPManualDuplex='+mode) if mode is not None else '',str(source)],stdout=output,stderr=err)
+                                      ('HPManualDuplex='+mode) if mode is not None else '',str(source)],stdout=output,stderr=err,env=environment)
             replied=set()
+            cancelled_hang=False
             deadline=time.monotonic()+12
             try:
                 while process.poll() is None:
                     assert time.monotonic()<deadline, 'filter hung'
+                    if hang_cancel and marker.exists() and not cancelled_hang:
+                        cancelled_hang=True
+                        process.send_signal(signal.SIGTERM)
                     requests=list(ipc.glob('*.request'))
                     for request in requests:
                         if request.name in replied: continue
@@ -66,6 +74,11 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
         return result
     code,text,_=run(4,mode=None,replies=['continue'])
     assert code==0 and pages(text)==[raw(1).hex(),raw(3).hex(),raw(4).hex(),raw(2).hex()]
+    started=time.monotonic()
+    code,text,err=run(4,hang=True,hang_cancel=True)
+    assert code==0 and 'job cancelled' in err and time.monotonic()-started<6
+    code,text,err=run(4,hang=True)
+    assert code!=0 and 'timed out' in err
     for count in (2,4,5):
         code,text,_=run(count,replies=['continue'])
         expected=[raw(n).hex() for n in range(1,count+1,2)]
@@ -82,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix='hp1020-tests-') as tmp:
     code,text,_=run(4,cancel=True)
     assert code==0 and len(pages(text))==2
     code,text,_=run(4)  # timeout must never print backs
-    assert code!=0 and len(pages(text))==2
+    assert code!=0 and len(pages(text))==2, (code,text)
     code,text,_=run(4,live=False)
     assert code!=0 and not text
     code,text,_=run(4,truncated=True)
